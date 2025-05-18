@@ -167,8 +167,8 @@ class Car {
     }
     
     createWheels() {
-        // Wheel positions relative to the car chassis (for visual placement initially)
-        const wheelVisualPositions = [
+        // Wheel positions relative to the car chassis
+        this.wheelPositions = [
             { x: this.length * 0.3, y: -this.height / 2 + this.wheelRadius, z: -this.width / 2 },  // Front left
             { x: this.length * 0.3, y: -this.height / 2 + this.wheelRadius, z: this.width / 2 },   // Front right
             { x: -this.length * 0.3, y: -this.height / 2 + this.wheelRadius, z: -this.width / 2 }, // Rear left
@@ -176,101 +176,78 @@ class Car {
         ];
         
         this.wheelMeshes = [];
-        //this.wheelBodies = []; // Not creating separate Cannon bodies for wheels when using RaycastVehicle
+        this.wheelBodies = [];
 
+        // Create wheel visuals
         const wheelGeometry = new THREE.CylinderGeometry(this.wheelRadius, this.wheelRadius, this.wheelWidth, 24);
         wheelGeometry.rotateX(Math.PI / 2); // Align cylinder to roll along Z if car moves along X
         const wheelMaterial = new THREE.MeshPhongMaterial({ color: 0x333333 });
         
+        // Create wheel physics
         for (let i = 0; i < 4; i++) {
+            // Visual mesh
             const wheelMesh = new THREE.Mesh(wheelGeometry, wheelMaterial);
             wheelMesh.castShadow = true;
             wheelMesh.receiveShadow = true;
-            
-            // Set initial visual position based on chassis position (will be updated by physics)
-            wheelMesh.position.set(
-                this.position.x + wheelVisualPositions[i].x,
-                this.position.y + wheelVisualPositions[i].y,
-                this.position.z + wheelVisualPositions[i].z
-            );
-             // Rotate wheel mesh to be upright, matching typical car wheel orientation
-            wheelMesh.rotation.z = Math.PI / 2;
-
-
             this.scene.add(wheelMesh);
             this.wheelMeshes.push(wheelMesh);
+            
+            // Physics body - use the helper method to create properly oriented wheel
+            const wheelBody = this.physicsWorld.createWheelBody(
+                this.wheelRadius,
+                this.wheelWidth,
+                {
+                    x: this.position.x + this.wheelPositions[i].x,
+                    y: this.position.y + this.wheelPositions[i].y,
+                    z: this.position.z + this.wheelPositions[i].z
+                }
+            );
+            
+            this.wheelBodies.push(wheelBody);
+            
+            // Set initial visual position
+            wheelMesh.position.set(
+                this.position.x + this.wheelPositions[i].x,
+                this.position.y + this.wheelPositions[i].y,
+                this.position.z + this.wheelPositions[i].z
+            );
         }
     }
     
     connectWheels() {
-        this.vehicle = new CANNON.RaycastVehicle({
-            chassisBody: this.chassisBody,
-            indexRightAxis: 0, // X axis is right
-            indexForwardAxis: 1, // Y axis is forward
-            indexUpAxis: 2 // Z axis is up
-        });
-
-        const wheelOptions = {
-            radius: this.wheelRadius,
-            directionLocal: new CANNON.Vec3(0, 0, -1), // Suspension direction (downwards along Z)
-            suspensionStiffness: 30,
-            suspensionRestLength: 0.3,
-            frictionSlip: 1.4, // Adjusted for potentially better grip
-            dampingRelaxation: 2.3,
-            dampingCompression: 4.4,
-            maxSuspensionForce: 100000,
-            rollInfluence: 0.01,
-            axleLocal: new CANNON.Vec3(1, 0, 0), // Wheel axle (rightwards along X)
-            chassisConnectionPointLocal: new CANNON.Vec3(), // Will be set per wheel
-            maxSuspensionTravel: 0.3,
-            customSlidingRotationalSpeed: -30,
-            useCustomSlidingRotationalSpeed: true
-        };
-
-        // Define chassis connection points for each wheel
-        // These are in the chassis's local coordinate system.
-        // Assuming car's local +Y is forward, +X is right, +Z is up (adjust if different)
-        const connectionPoints = [
-            new CANNON.Vec3(this.width / 2 - this.wheelWidth, this.length * 0.3, -this.height / 2 + this.wheelRadius),   // Front right
-            new CANNON.Vec3(-this.width / 2 + this.wheelWidth, this.length * 0.3, -this.height / 2 + this.wheelRadius),  // Front left
-            new CANNON.Vec3(this.width / 2 - this.wheelWidth, -this.length * 0.3, -this.height / 2 + this.wheelRadius),  // Rear right
-            new CANNON.Vec3(-this.width / 2 + this.wheelWidth, -this.length * 0.3, -this.height / 2 + this.wheelRadius) // Rear left
-        ];
+        // We'll use hinge constraints instead of RaycastVehicle
+        this.wheelConstraints = [];
         
-        // Adjusting RaycastVehicle axis if necessary (Cannon default: 0=x, 1=y, 2=z)
-        // My setup: Car X=length, Y=height, Z=width.
-        // Three.js default: X=right, Y=up, Z=towards camera (screen out)
-        // Cannon.js physics: X, Y, Z. We need consistency.
-        // Let's assume Cannon world is X-right, Y-up, Z-forward for this example.
-        // Car model: length (X), height (Y), width (Z).
-        // Chassis Box: length/2 (x), height/2 (y), width/2 (z)
-        // Wheel connection points need to align with chassis definition.
-
-        this.vehicle.indexRightAxis = 0; // X
-        this.vehicle.indexForwardAxis = 1; // Y
-        this.vehicle.indexUpAxis = 2; // Z
+        for (let i = 0; i < 4; i++) {
+            const wheelBody = this.wheelBodies[i];
+            const constraintPivot = new CANNON.Vec3(0, 0, 0); // Pivot at wheel center
+            
+            // Calculate the connection point on the chassis
+            const chassisConnectionPoint = new CANNON.Vec3(
+                this.wheelPositions[i].x,
+                this.wheelPositions[i].y,
+                this.wheelPositions[i].z
+            );
+            
+            // Use the helper method to create a hinge constraint
+            const hingeConstraint = this.physicsWorld.addHingeConstraint(
+                this.chassisBody,
+                wheelBody,
+                chassisConnectionPoint,
+                constraintPivot,
+                new CANNON.Vec3(0, 0, 1), // Wheel rotation axis (local to chassis)
+                new CANNON.Vec3(0, 1, 0)  // Wheel rotation axis (local to wheel)
+            );
+            
+            this.wheelConstraints.push(hingeConstraint);
+        }
         
-        // Example: Front-Right Wheel (idx 0)
-        wheelOptions.chassisConnectionPointLocal.set(this.width / 2 * 0.9, this.length * 0.4, 0); // x, y, z in chassis frame
-        this.vehicle.addWheel(wheelOptions);
-
-        // Front-Left Wheel (idx 1)
-        wheelOptions.chassisConnectionPointLocal.set(-this.width / 2 * 0.9, this.length * 0.4, 0);
-        this.vehicle.addWheel(wheelOptions);
-
-        // Rear-Right Wheel (idx 2)
-        wheelOptions.chassisConnectionPointLocal.set(this.width / 2 * 0.9, -this.length * 0.4, 0);
-        this.vehicle.addWheel(wheelOptions);
-
-        // Rear-Left Wheel (idx 3)
-        wheelOptions.chassisConnectionPointLocal.set(-this.width / 2 * 0.9, -this.length * 0.4, 0);
-        this.vehicle.addWheel(wheelOptions);
-
-        this.vehicle.addToWorld(this.physicsWorld.world);
-        
-        // We don't need separate this.wheels or this.wheelInfos if RaycastVehicle handles it
-        // this.wheelInfos = this.vehicle.wheelInfos; // RaycastVehicle has this internally
-        // this.wheels = this.wheelBodies; // Not used
+        // Front wheel steering constraints
+        this.steeringConstraints = [];
+        for (let i = 0; i < 2; i++) { // Only front wheels
+            const constraint = this.wheelConstraints[i];
+            this.steeringConstraints.push(constraint);
+        }
     }
     
     createSoftBodyComponents() {
@@ -414,9 +391,20 @@ class Car {
             }
         }
         
-        // Apply steering to front wheels
-        this.vehicle.setSteeringValue(this.steering, 0);
-        this.vehicle.setSteeringValue(this.steering, 1);
+        // Apply steering to front wheels by updating the hinge constraint axis
+        for (let i = 0; i < 2; i++) { // Only front wheels
+            const wheelBody = this.wheelBodies[i];
+            
+            // Update wheel orientation for steering
+            const steeringQuat = new CANNON.Quaternion();
+            steeringQuat.setFromAxisAngle(new CANNON.Vec3(0, 1, 0), this.steering);
+            
+            // Combine with the default wheel orientation
+            const defaultQuat = new CANNON.Quaternion();
+            defaultQuat.setFromAxisAngle(new CANNON.Vec3(0, 0, 1), Math.PI / 2);
+            
+            wheelBody.quaternion = steeringQuat.mult(defaultQuat);
+        }
     }
     
     updateDriving(deltaTime) {
@@ -431,20 +419,25 @@ class Car {
             engineForce = -this.maxForce;
         }
         
-        // Braking
-        if (this.controls.brake) {
-            brakingForce = this.brakingForce;
-            engineForce = 0;
-        }
-        
-        // Apply forces to wheels
-        // Rear-wheel drive
-        this.vehicle.applyEngineForce(engineForce, 2);
-        this.vehicle.applyEngineForce(engineForce, 3);
-        
-        // Apply brakes to all wheels
-        for (let i = 0; i < 4; i++) {
-            this.vehicle.setBrake(brakingForce, i);
+        // Apply forces to the rear wheels (rear-wheel drive)
+        for (let i = 2; i < 4; i++) { // Rear wheels
+            const wheelBody = this.wheelBodies[i];
+            
+            // Calculate force direction based on wheel orientation
+            const forceDir = new CANNON.Vec3(1, 0, 0); // Local forward direction
+            const worldForceDir = wheelBody.quaternion.vmult(forceDir);
+            
+            // Apply force at the wheel
+            if (engineForce !== 0) {
+                wheelBody.applyForce(worldForceDir.scale(engineForce), wheelBody.position);
+            }
+            
+            // Apply braking as a damping force if needed
+            if (this.controls.brake) {
+                wheelBody.angularDamping = 0.9; // High damping for braking
+            } else {
+                wheelBody.angularDamping = 0.1; // Low damping for normal driving
+            }
         }
         
         // Calculate current speed (approximate)
@@ -452,18 +445,21 @@ class Car {
     }
     
     updateWheelVisuals() {
-        for (let i = 0; i < this.vehicle.wheelInfos.length; i++) {
-            this.vehicle.updateWheelTransform(i);
-            const transform = this.vehicle.wheelInfos[i].worldTransform;
-            
+        // Update wheel visuals to match physics bodies
+        for (let i = 0; i < this.wheelBodies.length; i++) {
+            const wheelBody = this.wheelBodies[i];
             const wheelMesh = this.wheelMeshes[i];
-            wheelMesh.position.copy(cannonToThreeVector(transform.position));
-            wheelMesh.quaternion.copy(new THREE.Quaternion(
-                transform.quaternion.x,
-                transform.quaternion.y,
-                transform.quaternion.z,
-                transform.quaternion.w
-            ));
+            
+            // Update position
+            wheelMesh.position.copy(cannonToThreeVector(wheelBody.position));
+            
+            // Update rotation
+            wheelMesh.quaternion.set(
+                wheelBody.quaternion.x,
+                wheelBody.quaternion.y,
+                wheelBody.quaternion.z,
+                wheelBody.quaternion.w
+            );
         }
     }
     
@@ -473,27 +469,33 @@ class Car {
         this.chassisBody.quaternion.set(0, 0, 0, 1);
         this.chassisBody.velocity.set(0, 0, 0);
         this.chassisBody.angularVelocity.set(0, 0, 0);
-
-        // RaycastVehicle doesn't store wheel bodies that need individual resetting here.
-        // Resetting chassis velocity and angular velocity is key.
-        // If RaycastVehicle has a specific reset method in 0.6.2, use it.
-        // For now, this should be sufficient for basic reset.
+        
+        // Reset wheel positions and states
+        for (let i = 0; i < this.wheelBodies.length; i++) {
+            const wheelBody = this.wheelBodies[i];
+            
+            // Reset position relative to chassis
+            wheelBody.position.set(
+                this.chassisBody.position.x + this.wheelPositions[i].x,
+                this.chassisBody.position.y + this.wheelPositions[i].y,
+                this.chassisBody.position.z + this.wheelPositions[i].z
+            );
+            
+            // Reset rotation (accounting for the default wheel orientation)
+            const defaultQuat = new CANNON.Quaternion();
+            defaultQuat.setFromAxisAngle(new CANNON.Vec3(0, 0, 1), Math.PI / 2);
+            wheelBody.quaternion.copy(defaultQuat);
+            
+            // Reset velocities
+            wheelBody.velocity.set(0, 0, 0);
+            wheelBody.angularVelocity.set(0, 0, 0);
+            wheelBody.angularDamping = 0.1;
+        }
         
         // Reset soft-body components if they exist
         if (this.frontBumper && this.frontBumper.bodies) {
             for (let i = 0; i < this.frontBumper.bodies.length; i++) {
                 const body = this.frontBumper.bodies[i];
-                // Recalculate initial positions for soft body parts based on new chassis position
-                const initialChassisPos = new CANNON.Vec3(this.position.x, this.position.y + this.height / 2, this.position.z);
-                const relativePos = new CANNON.Vec3(
-                    this.length / 2 + 0.1,
-                    -this.height / 3, // Relative to chassis center
-                    -this.width * 0.9 / 2 + (this.width * 0.9 / (this.frontBumper.bodies.length - 1)) * i
-                );
-                const worldPos = initialChassisPos.vadd(relativePos); // Placeholder, need actual chassis orientation
-                
-                // A more robust way is to store initial local positions and transform them
-                // For simplicity, roughly re-positioning them:
                 body.position.set(
                     this.chassisBody.position.x + this.length / 2 + 0.1,
                     this.chassisBody.position.y - this.height / 3,
@@ -509,10 +511,5 @@ class Car {
         };
         this.speed = 0;
         this.steering = 0;
-        // Ensure steering is reset on the vehicle
-        if (this.vehicle) {
-            this.vehicle.setSteeringValue(0, 0);
-            this.vehicle.setSteeringValue(0, 1);
-        }
     }
 } 

@@ -42,20 +42,14 @@ class PhysicsWorld {
     }
     
     update(deltaTime) {
-        // Update physics world
+        // Step the physics simulation
         this.world.step(deltaTime);
         
-        // Update all debug visualizations
-        for (let i = 0; i < this.bodies.length; i++) {
-            if (this.bodies[i].userData && this.bodies[i].userData.mesh) {
-                const mesh = this.bodies[i].userData.mesh;
-                const body = this.bodies[i];
-                
-                // Update position
-                mesh.position.copy(cannonToThreeVector(body.position));
-                
-                // Update rotation
-                mesh.quaternion.copy(new THREE.Quaternion(
+        // Update body meshes based on physics
+        for (const body of this.bodies) {
+            if (body.userData && body.userData.mesh) {
+                body.userData.mesh.position.copy(cannonToThreeVector(body.position));
+                body.userData.mesh.quaternion.copy(new THREE.Quaternion(
                     body.quaternion.x,
                     body.quaternion.y,
                     body.quaternion.z,
@@ -65,11 +59,10 @@ class PhysicsWorld {
         }
     }
     
-    addBody(body, mesh = null) {
+    addBody(body, mesh) {
         this.world.addBody(body);
         this.bodies.push(body);
         
-        // Associate mesh with body for synchronization
         if (mesh) {
             body.userData = { mesh };
         }
@@ -77,10 +70,12 @@ class PhysicsWorld {
         return body;
     }
     
-    // Helper to add a constraint to the world
-    addConstraint(constraint) {
-        this.world.addConstraint(constraint);
-        return constraint;
+    removeBody(body) {
+        const index = this.bodies.indexOf(body);
+        if (index !== -1) {
+            this.bodies.splice(index, 1);
+        }
+        this.world.removeBody(body);
     }
     
     createGround(size = 100, divisions = 10) {
@@ -133,6 +128,42 @@ class PhysicsWorld {
         );
         
         return this.addBody(terrainBody);
+    }
+    
+    // Create a wheel cylinder with proper vertex ordering
+    createWheelBody(radius, width, position, mass = 30, material = this.wheelMaterial) {
+        // Create cylinder shape with properly ordered vertices
+        const wheelShape = new CANNON.Cylinder(radius, radius, width, 16);
+        
+        // Rotate the cylinder to be properly oriented
+        const quat = new CANNON.Quaternion();
+        quat.setFromAxisAngle(new CANNON.Vec3(0, 0, 1), Math.PI / 2);
+        
+        // Create the wheel body
+        const wheelBody = new CANNON.Body({
+            mass: mass,
+            position: new CANNON.Vec3(position.x, position.y, position.z),
+            shape: wheelShape,
+            material: material,
+            quaternion: quat, // Apply the rotation to orient the cylinder correctly
+            angularDamping: 0.2 // Add some damping for more realistic wheel rotation
+        });
+        
+        return this.addBody(wheelBody);
+    }
+    
+    // Add a hinge constraint between bodies
+    addHingeConstraint(bodyA, bodyB, pivotA, pivotB, axisA, axisB, maxForce = 1e6) {
+        const constraint = new CANNON.HingeConstraint(bodyA, bodyB, {
+            pivotA: pivotA,
+            pivotB: pivotB,
+            axisA: axisA,
+            axisB: axisB,
+            maxForce: maxForce
+        });
+        
+        this.world.addConstraint(constraint);
+        return constraint;
     }
     
     // Create a soft body using a point-to-point constraint system
