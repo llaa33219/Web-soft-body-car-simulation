@@ -192,18 +192,27 @@ class Car {
             this.scene.add(wheelMesh);
             this.wheelMeshes.push(wheelMesh);
             
-            // Create wheel physics body
-            const wheelShape = new CANNON.Sphere(this.wheelRadius);
+            // Create wheel physics body - using cylinder for better rolling
+            const wheelShape = new CANNON.Cylinder(
+                this.wheelRadius, 
+                this.wheelRadius, 
+                this.wheelWidth, 
+                20
+            );
             const wheelBody = new CANNON.Body({
-                mass: 50, // Wheel mass in kg
+                mass: 30, // Wheel mass in kg
                 material: this.physicsWorld.wheelMaterial,
                 position: new CANNON.Vec3(
                     this.position.x + wheelPositions[i].x,
                     this.position.y + wheelPositions[i].y,
                     this.position.z + wheelPositions[i].z
-                ),
-                shape: wheelShape
+                )
             });
+            
+            // Rotate so cylinder is aligned correctly
+            const quaternion = new CANNON.Quaternion();
+            quaternion.setFromAxisAngle(new CANNON.Vec3(0, 0, 1), Math.PI / 2);
+            wheelBody.addShape(wheelShape, new CANNON.Vec3(), quaternion);
             
             // Add wheel body to physics world
             this.physicsWorld.addBody(wheelBody, wheelMesh);
@@ -213,26 +222,11 @@ class Car {
     
     connectWheels() {
         // Create vehicle dynamics
-        this.vehicle = new CANNON.RaycastVehicle({
-            chassisBody: this.chassisBody,
-        });
+        // In Cannon.js 0.6.2, we need to use a different approach for the vehicle
         
-        const wheelOptions = {
-            radius: this.wheelRadius,
-            directionLocal: new CANNON.Vec3(0, -1, 0),
-            suspensionStiffness: 30,
-            suspensionRestLength: 0.3,
-            frictionSlip: 1.4,
-            dampingRelaxation: 2.3,
-            dampingCompression: 4.4,
-            maxSuspensionForce: 100000,
-            rollInfluence: 0.01,
-            axleLocal: new CANNON.Vec3(0, 0, 1),
-            chassisConnectionPointLocal: new CANNON.Vec3(1, 0, 1),
-            maxSuspensionTravel: 0.3,
-            customSlidingRotationalSpeed: -30,
-            useCustomSlidingRotationalSpeed: true
-        };
+        // First, let's set up constraints for the wheels
+        this.constraints = [];
+        this.wheelBodies = this.wheelBodies || [];
         
         // Wheel positions (relative to the chassis center)
         const wheelPositions = [
@@ -242,44 +236,79 @@ class Car {
             new CANNON.Vec3(-this.length * 0.3, -this.height / 3, this.width / 2)    // Rear right
         ];
         
-        // Add each wheel to the vehicle
+        // Create a simple vehicle using constraints
         for (let i = 0; i < 4; i++) {
-            wheelOptions.chassisConnectionPointLocal.copy(wheelPositions[i]);
-            this.vehicle.addWheel(wheelOptions);
+            const wheelBody = this.wheelBodies[i];
+            
+            // Position the wheel at the right spot
+            wheelBody.position.set(
+                this.chassisBody.position.x + wheelPositions[i].x,
+                this.chassisBody.position.y + wheelPositions[i].y,
+                this.chassisBody.position.z + wheelPositions[i].z
+            );
+            
+            // Create a hinge constraint (axis of rotation for wheels)
+            const constraint = new CANNON.HingeConstraint(this.chassisBody, wheelBody, {
+                pivotA: wheelPositions[i],
+                axisA: new CANNON.Vec3(0, 0, 1), // Rotate around Z axis for steering
+                pivotB: new CANNON.Vec3(0, 0, 0),
+                axisB: new CANNON.Vec3(0, 0, 1)
+            });
+            
+            this.constraints.push(constraint);
+            this.physicsWorld.world.addConstraint(constraint);
         }
         
-        // Initialize wheels
-        this.vehicle.init();
+        // Create a simple vehicle object to store properties
+        this.vehicle = {
+            wheelBodies: this.wheelBodies,
+            constraints: this.constraints,
+            wheelInfos: wheelPositions.map((pos, i) => {
+                return {
+                    index: i,
+                    position: pos,
+                    isFront: i < 2,
+                    worldTransform: {
+                        position: this.wheelBodies[i].position,
+                        quaternion: this.wheelBodies[i].quaternion
+                    }
+                };
+            }),
+            // Add methods needed
+            setSteeringValue: (value, wheelIndex) => {
+                if (wheelIndex < 2) { // Front wheels only
+                    const constraint = this.constraints[wheelIndex];
+                    // Set the hinge axis for steering
+                    const axis = new CANNON.Vec3(Math.sin(value), 0, Math.cos(value));
+                    constraint.axisA.copy(axis);
+                }
+            },
+            applyEngineForce: (force, wheelIndex) => {
+                const wheelBody = this.wheelBodies[wheelIndex];
+                // Apply force in the wheel's forward direction
+                const worldForward = new CANNON.Vec3(1, 0, 0);
+                const forceVector = new CANNON.Vec3();
+                wheelBody.quaternion.vmult(worldForward, forceVector);
+                forceVector.scale(force, forceVector);
+                wheelBody.applyForce(forceVector, wheelBody.position);
+            },
+            setBrake: (brakeForce, wheelIndex) => {
+                const wheelBody = this.wheelBodies[wheelIndex];
+                // Apply damping to simulate braking
+                wheelBody.angularDamping = brakeForce > 0 ? 0.9 : 0.0;
+            },
+            updateWheelTransform: (wheelIndex) => {
+                // Update wheel transform (position/rotation) for visualization
+                const wheelInfo = this.vehicle.wheelInfos[wheelIndex];
+                wheelInfo.worldTransform.position = this.wheelBodies[wheelIndex].position;
+                wheelInfo.worldTransform.quaternion = this.wheelBodies[wheelIndex].quaternion;
+            }
+        };
         
-        // Add vehicle dynamics to world
-        this.physicsWorld.world.addSystem(this.vehicle);
-        
-        // Sync the wheels with the vehicle
+        // We've already set up wheels and constraints in the previous step
+        // The this.wheelBodies array was populated in createWheels()
         this.wheelInfos = this.vehicle.wheelInfos;
-        this.wheels = [];
-        
-        this.vehicle.wheelInfos.forEach((wheel, index) => {
-            const cylinderShape = new CANNON.Cylinder(
-                this.wheelRadius, 
-                this.wheelRadius, 
-                this.wheelWidth, 
-                20
-            );
-            const wheelBody = new CANNON.Body({
-                mass: 0,
-                material: this.physicsWorld.wheelMaterial
-            });
-            wheelBody.type = CANNON.Body.KINEMATIC;
-            wheelBody.collisionFilterGroup = 0; // Turn off collisions
-            
-            // Rotate so that cylinder axis is along the wheel axis
-            const quaternion = new CANNON.Quaternion();
-            quaternion.setFromAxisAngle(new CANNON.Vec3(0, 1, 0), Math.PI / 2);
-            wheelBody.addShape(cylinderShape, new CANNON.Vec3(), quaternion);
-            
-            this.physicsWorld.addBody(wheelBody, this.wheelMeshes[index]);
-            this.wheels.push(wheelBody);
-        });
+        this.wheels = this.wheelBodies;
     }
     
     createSoftBodyComponents() {
@@ -461,23 +490,27 @@ class Car {
     }
     
     updateWheelVisuals() {
-        // Update wheel positions and rotations based on vehicle dynamics
-        for (let i = 0; i < this.vehicle.wheelInfos.length; i++) {
-            this.vehicle.updateWheelTransform(i);
-            const transform = this.vehicle.wheelInfos[i].worldTransform;
+        // Update wheel positions and rotations based on wheel bodies
+        for (let i = 0; i < this.wheelBodies.length; i++) {
+            const wheelBody = this.wheelBodies[i];
+            
+            // Update wheel transform info for other functions
+            if (this.vehicle && this.vehicle.updateWheelTransform) {
+                this.vehicle.updateWheelTransform(i);
+            }
             
             // Position
             this.wheelMeshes[i].position.copy(
-                cannonToThreeVector(transform.position)
+                cannonToThreeVector(wheelBody.position)
             );
             
             // Rotation
             this.wheelMeshes[i].quaternion.copy(
                 new THREE.Quaternion(
-                    transform.quaternion.x,
-                    transform.quaternion.y,
-                    transform.quaternion.z,
-                    transform.quaternion.w
+                    wheelBody.quaternion.x,
+                    wheelBody.quaternion.y,
+                    wheelBody.quaternion.z,
+                    wheelBody.quaternion.w
                 )
             );
         }

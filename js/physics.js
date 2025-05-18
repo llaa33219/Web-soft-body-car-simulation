@@ -77,6 +77,12 @@ class PhysicsWorld {
         return body;
     }
     
+    // Helper to add a constraint to the world
+    addConstraint(constraint) {
+        this.world.addConstraint(constraint);
+        return constraint;
+    }
+    
     createGround(size = 100, divisions = 10) {
         // Create ground body
         const groundShape = new CANNON.Plane();
