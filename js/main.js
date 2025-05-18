@@ -42,7 +42,7 @@ function init() {
     gridMap = new GridMap(scene, physicsWorld);
     
     // Create car
-    car = new Car(scene, physicsWorld);
+    initCar();
     
     // Set up window resize handler
     window.addEventListener('resize', onWindowResize);
@@ -168,6 +168,16 @@ function animate(time) {
     
     // Render the scene
     renderer.render(scene, camera);
+}
+
+// Initialize car
+function initCar() {
+    // Create car at a position above the ground to prevent falling through
+    const carStartPosition = { x: 0, y: 1.5, z: 0 }; // Raised position
+    car = new Car(scene, physicsWorld, carStartPosition);
+    
+    // Make sure the car is created with proper visualization
+    console.log("Car initialized at position:", carStartPosition);
 }
 
 // Initialize the application when the window loads
