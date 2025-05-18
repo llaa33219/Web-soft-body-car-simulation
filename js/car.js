@@ -192,27 +192,23 @@ class Car {
             this.scene.add(wheelMesh);
             this.wheelMeshes.push(wheelMesh);
             
-            // Create wheel physics body - using cylinder for better rolling
-            const wheelShape = new CANNON.Cylinder(
-                this.wheelRadius, 
-                this.wheelRadius, 
-                this.wheelWidth, 
-                20
-            );
+            // Create wheel physics body - using Sphere to avoid Cylinder normal issues
+            const wheelShape = new CANNON.Sphere(this.wheelRadius);
             const wheelBody = new CANNON.Body({
-                mass: 30, // Wheel mass in kg
+                mass: 50, // Wheel mass in kg
                 material: this.physicsWorld.wheelMaterial,
                 position: new CANNON.Vec3(
                     this.position.x + wheelPositions[i].x,
                     this.position.y + wheelPositions[i].y,
                     this.position.z + wheelPositions[i].z
-                )
+                ),
+                shape: wheelShape // Directly assign sphere shape
             });
             
-            // Rotate so cylinder is aligned correctly
-            const quaternion = new CANNON.Quaternion();
-            quaternion.setFromAxisAngle(new CANNON.Vec3(0, 0, 1), Math.PI / 2);
-            wheelBody.addShape(wheelShape, new CANNON.Vec3(), quaternion);
+            // Removed Cylinder specific rotation and addShape:
+            // const quaternion = new CANNON.Quaternion();
+            // quaternion.setFromAxisAngle(new CANNON.Vec3(0, 0, 1), Math.PI / 2);
+            // wheelBody.addShape(wheelShape, new CANNON.Vec3(), quaternion);
             
             // Add wheel body to physics world
             this.physicsWorld.addBody(wheelBody, wheelMesh);
