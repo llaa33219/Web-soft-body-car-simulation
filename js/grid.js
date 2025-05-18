@@ -365,11 +365,42 @@ class GridMap {
     }
     
     toggleTerrain() {
+        console.log("Toggling terrain. Current visibility:", this.terrainMesh.visible);
+        
+        // Toggle mesh visibility
         this.terrainMesh.visible = !this.terrainMesh.visible;
         this.groundMesh.visible = !this.terrainMesh.visible;
         
-        // Also toggle physics bodies if needed
-        // This would require more complex physics setup to fully implement
+        // Toggle physics bodies
+        if (this.terrainMesh.visible) {
+            // Remove flat ground body
+            if (this.groundBody) {
+                this.physicsWorld.removeBody(this.groundBody);
+            }
+            
+            // Add terrain body if it exists
+            if (this.terrainBody && this.terrainBody.shape) {
+                this.physicsWorld.addBody(this.terrainBody);
+            }
+        } else {
+            // Remove terrain body
+            if (this.terrainBody) {
+                this.physicsWorld.removeBody(this.terrainBody);
+            }
+            
+            // Re-add flat ground body if it exists
+            if (this.groundBody && this.groundBody.shape) {
+                this.physicsWorld.addBody(this.groundBody);
+            } else {
+                // Create ground body if it doesn't exist
+                this.groundBody = this.physicsWorld.createGround(this.size);
+            }
+        }
+        
+        // Reset car position to prevent it from falling through changed terrain
+        if (window.car && typeof window.car.reset === 'function') {
+            window.car.reset();
+        }
     }
     
     update(deltaTime) {

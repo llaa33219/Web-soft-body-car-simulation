@@ -398,6 +398,11 @@ class Car {
     }
     
     update(deltaTime) {
+        // Check for valid delta time
+        if (isNaN(deltaTime) || deltaTime <= 0) {
+            return; // Skip update if invalid deltaTime
+        }
+        
         // Update steering
         this.updateSteering(deltaTime);
         
@@ -411,6 +416,12 @@ class Car {
         if (this.carBody) {
             this.carBody.position.copy(this.chassisMesh.position);
             this.carBody.quaternion.copy(this.chassisMesh.quaternion);
+        }
+        
+        // Check if chassis has fallen too far - reset if needed
+        if (this.chassisBody.position.y < -10) {
+            console.log("Car fell below -10 units, resetting position");
+            this.reset();
         }
     }
     
@@ -487,8 +498,9 @@ class Car {
             }
         }
         
-        // Calculate current speed
-        this.speed = this.chassisBody.velocity.length();
+        // Calculate current speed - make sure it's valid
+        const velocity = this.chassisBody.velocity.length();
+        this.speed = isNaN(velocity) ? 0 : velocity;
     }
     
     updateWheelVisuals() {
@@ -511,8 +523,10 @@ class Car {
     }
     
     reset() {
-        // Reset car position and rotation
-        this.chassisBody.position.set(this.position.x, this.position.y + this.height / 2, this.position.z); // Ensure it's above ground
+        console.log("Resetting car position");
+        
+        // Reset car position and rotation to initial position
+        this.chassisBody.position.set(this.position.x, this.position.y + this.height, this.position.z);
         this.chassisBody.quaternion.set(0, 0, 0, 1);
         this.chassisBody.velocity.set(0, 0, 0);
         this.chassisBody.angularVelocity.set(0, 0, 0);
@@ -532,6 +546,7 @@ class Car {
             wheelBody.velocity.set(0, 0, 0);
             wheelBody.angularVelocity.set(0, 0, 0);
             wheelBody.angularDamping = 0.1;
+            wheelBody.linearDamping = 0.05;
         }
         
         // Reset soft-body components if they exist
