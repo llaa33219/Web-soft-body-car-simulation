@@ -71,11 +71,22 @@ class Car {
         
         // Create chassis mesh (visual representation)
         const geometry = new THREE.BoxGeometry(this.length, this.height, this.width);
-        const material = new THREE.MeshPhongMaterial({ color: 0x0066cc });
+        const material = new THREE.MeshPhongMaterial({ 
+            color: 0x0066cc,
+            transparent: true,
+            opacity: 0.8   // Make slightly transparent for better visibility
+        });
         this.chassisMesh = new THREE.Mesh(geometry, material);
         this.chassisMesh.castShadow = true;
         this.chassisMesh.receiveShadow = true;
         this.scene.add(this.chassisMesh);
+        
+        // Add wireframe to make chassis more visible
+        const wireframe = new THREE.LineSegments(
+            new THREE.EdgesGeometry(geometry),
+            new THREE.LineBasicMaterial({ color: 0xffffff })
+        );
+        this.chassisMesh.add(wireframe);
         
         // Create chassis physics body
         const chassisShape = new CANNON.Box(new CANNON.Vec3(
@@ -95,7 +106,9 @@ class Car {
                 this.position.z
             ),
             shape: chassisShape,
-            material: this.physicsWorld.groundMaterial
+            material: this.physicsWorld.groundMaterial,
+            angularDamping: 0.5, // Add damping to prevent excessive rotation
+            linearDamping: 0.1   // Add damping to prevent sliding
         });
         
         // Lower the center of mass
@@ -119,10 +132,22 @@ class Car {
         
         // Main body (rounded box)
         const bodyGeom = new THREE.BoxGeometry(this.length, this.height * 0.7, this.width);
-        const bodyMat = new THREE.MeshPhongMaterial({ color: 0x0066cc });
+        const bodyMat = new THREE.MeshPhongMaterial({ 
+            color: 0xff0000,  // Bright red for visibility
+            transparent: true,
+            opacity: 0.9
+        });
         const bodyMesh = new THREE.Mesh(bodyGeom, bodyMat);
         bodyMesh.position.y = this.height * 0.15;
         bodyGroup.add(bodyMesh);
+        
+        // Add wireframe to body
+        const wireframe = new THREE.LineSegments(
+            new THREE.EdgesGeometry(bodyGeom),
+            new THREE.LineBasicMaterial({ color: 0xffffff })
+        );
+        wireframe.position.y = this.height * 0.15;
+        bodyGroup.add(wireframe);
         
         // Cabin/roof
         const cabinWidth = this.width * 0.8;
@@ -137,21 +162,25 @@ class Car {
         
         // Front hood
         const hoodGeom = new THREE.BoxGeometry(this.length * 0.25, this.height * 0.1, this.width);
-        const hoodMat = new THREE.MeshPhongMaterial({ color: 0x0066cc });
+        const hoodMat = new THREE.MeshPhongMaterial({ color: 0xff0000 });
         const hoodMesh = new THREE.Mesh(hoodGeom, hoodMat);
         hoodMesh.position.set(this.length * 0.3, this.height * 0.35, 0);
         bodyGroup.add(hoodMesh);
         
         // Trunk
         const trunkGeom = new THREE.BoxGeometry(this.length * 0.2, this.height * 0.2, this.width);
-        const trunkMat = new THREE.MeshPhongMaterial({ color: 0x0066cc });
+        const trunkMat = new THREE.MeshPhongMaterial({ color: 0xff0000 });
         const trunkMesh = new THREE.Mesh(trunkGeom, trunkMat);
         trunkMesh.position.set(-this.length * 0.35, this.height * 0.25, 0);
         bodyGroup.add(trunkMesh);
         
-        // Headlights
-        const headlightGeom = new THREE.CylinderGeometry(0.1, 0.1, 0.05, 16);
-        const headlightMat = new THREE.MeshPhongMaterial({ color: 0xffffcc, emissive: 0xffffcc });
+        // Headlights - make brighter to be more visible
+        const headlightGeom = new THREE.CylinderGeometry(0.2, 0.2, 0.05, 16);
+        const headlightMat = new THREE.MeshPhongMaterial({ 
+            color: 0xffffcc, 
+            emissive: 0xffffcc,
+            emissiveIntensity: 2.0
+        });
         
         const headlightLeft = new THREE.Mesh(headlightGeom, headlightMat);
         headlightLeft.rotation.z = Math.PI / 2;
@@ -164,7 +193,11 @@ class Car {
         bodyGroup.add(headlightRight);
         
         // Taillights
-        const taillightMat = new THREE.MeshPhongMaterial({ color: 0xff0000, emissive: 0x660000 });
+        const taillightMat = new THREE.MeshPhongMaterial({ 
+            color: 0xff0000, 
+            emissive: 0xff0000,
+            emissiveIntensity: 2.0
+        });
         
         const taillightLeft = new THREE.Mesh(headlightGeom, taillightMat);
         taillightLeft.rotation.z = Math.PI / 2;

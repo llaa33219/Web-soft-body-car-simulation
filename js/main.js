@@ -246,11 +246,24 @@ function animate(time) {
 function initCar() {
     try {
         // Create car at a position above the ground to prevent falling through
-        const carStartPosition = { x: 0, y: 2, z: 0 }; // Higher position
+        const carStartPosition = { x: 0, y: 5, z: 0 }; // Much higher position
         car = new Car(scene, physicsWorld, carStartPosition);
         
         // Make sure the car is created with proper visualization
         console.log("Car initialized at position:", carStartPosition);
+        
+        // Add a debug marker to show where the car should be
+        const debugMarker = new THREE.Mesh(
+            new THREE.SphereGeometry(1, 16, 16),
+            new THREE.MeshBasicMaterial({ color: 0xff0000, wireframe: true })
+        );
+        debugMarker.position.set(carStartPosition.x, carStartPosition.y, carStartPosition.z);
+        scene.add(debugMarker);
+        console.log("Debug marker added at position:", debugMarker.position);
+        
+        // Set camera to look at car position initially
+        camera.position.set(carStartPosition.x + 20, carStartPosition.y + 10, carStartPosition.z + 20);
+        camera.lookAt(carStartPosition.x, carStartPosition.y, carStartPosition.z);
     } catch (error) {
         console.error("Error initializing car:", error);
     }
