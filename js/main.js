@@ -13,6 +13,8 @@ function init() {
     if (isInitialized) return;
     isInitialized = true;
     
+    console.log("Initializing application...");
+    
     // Create Three.js scene
     scene = new THREE.Scene();
     scene.background = new THREE.Color(0x87CEEB); // Sky blue
@@ -26,7 +28,7 @@ function init() {
     
     // Create camera
     camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
-    camera.position.set(20, 15, 20);
+    camera.position.set(0, 15, 30); // Set camera further back and higher to see more
     camera.lookAt(0, 0, 0);
     
     // Add camera controls
@@ -36,23 +38,28 @@ function init() {
     cameraControls.screenSpacePanning = false;
     cameraControls.maxPolarAngle = Math.PI / 2;
     
+    // Add scene helper to show axes
+    const axesHelper = new THREE.AxesHelper(10);
+    scene.add(axesHelper);
+    
     // Create physics world
     physicsWorld = new PhysicsWorld();
     
     // Create grid map
     gridMap = new GridMap(scene, physicsWorld);
     
-    // Create car
-    initCar();
+    // Create car after a short delay to make sure scene is ready
+    setTimeout(() => {
+        initCar();
+        // Start animation loop only after car is initialized
+        animate(0);
+    }, 500);
     
     // Set up window resize handler
     window.addEventListener('resize', onWindowResize);
     
     // Add UI controls
     setupUI();
-    
-    // Start animation loop
-    animate(0);
 }
 
 // Handle window resize
@@ -138,7 +145,7 @@ function setupUI() {
     followCamBtn.style.cursor = 'pointer';
     
     window.cameraFollowing = false;
-    const originalCameraPosition = { x: 20, y: 15, z: 20 };
+    const originalCameraPosition = { x: 0, y: 15, z: 30 };
     
     followCamBtn.addEventListener('click', () => {
         console.log("Camera follow toggled");
@@ -149,11 +156,11 @@ function setupUI() {
         if (!window.cameraFollowing) {
             // Reset camera position
             camera.position.set(
-                car.chassisMesh.position.x + originalCameraPosition.x,
-                car.chassisMesh.position.y + originalCameraPosition.y,
-                car.chassisMesh.position.z + originalCameraPosition.z
+                originalCameraPosition.x,
+                originalCameraPosition.y,
+                originalCameraPosition.z
             );
-            camera.lookAt(car.chassisMesh.position);
+            camera.lookAt(0, 0, 0);
             cameraControls.enabled = true;
         } else {
             // Disable orbit controls when following
@@ -245,25 +252,52 @@ function animate(time) {
 // Initialize car
 function initCar() {
     try {
-        // Create car at a position above the ground to prevent falling through
-        const carStartPosition = { x: 0, y: 5, z: 0 }; // Much higher position
+        console.log("Initializing car...");
+        
+        // Create car at a position high above the ground to prevent falling through
+        const carStartPosition = { x: 0, y: 10, z: 0 }; // Much higher position for better visibility
+        
+        // Create large visual marker to indicate car position
+        const marker = new THREE.Group();
+        
+        // Add sphere
+        const sphere = new THREE.Mesh(
+            new THREE.SphereGeometry(2, 16, 16),
+            new THREE.MeshBasicMaterial({ color: 0xff0000, wireframe: true })
+        );
+        marker.add(sphere);
+        
+        // Add vertical line down from sphere
+        const line = new THREE.Mesh(
+            new THREE.CylinderGeometry(0.1, 0.1, 20, 8),
+            new THREE.MeshBasicMaterial({ color: 0xffff00 })
+        );
+        line.position.y = -10; // Line extends below the sphere
+        marker.add(line);
+        
+        // Position marker at car start position
+        marker.position.set(carStartPosition.x, carStartPosition.y, carStartPosition.z);
+        scene.add(marker);
+        console.log("Marker added at position:", marker.position);
+        
+        // Create car
         car = new Car(scene, physicsWorld, carStartPosition);
+        window.car = car; // Make car globally accessible for debugging
         
         // Make sure the car is created with proper visualization
         console.log("Car initialized at position:", carStartPosition);
         
-        // Add a debug marker to show where the car should be
-        const debugMarker = new THREE.Mesh(
-            new THREE.SphereGeometry(1, 16, 16),
-            new THREE.MeshBasicMaterial({ color: 0xff0000, wireframe: true })
-        );
-        debugMarker.position.set(carStartPosition.x, carStartPosition.y, carStartPosition.z);
-        scene.add(debugMarker);
-        console.log("Debug marker added at position:", debugMarker.position);
-        
-        // Set camera to look at car position initially
+        // Set camera to look at car position
         camera.position.set(carStartPosition.x + 20, carStartPosition.y + 10, carStartPosition.z + 20);
         camera.lookAt(carStartPosition.x, carStartPosition.y, carStartPosition.z);
+        
+        // Force reset to ensure car is properly positioned
+        setTimeout(() => {
+            if (car && typeof car.reset === 'function') {
+                car.reset();
+                console.log("Car position reset");
+            }
+        }, 500);
     } catch (error) {
         console.error("Error initializing car:", error);
     }

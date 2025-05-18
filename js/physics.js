@@ -42,32 +42,55 @@ class PhysicsWorld {
     }
     
     update(deltaTime) {
-        // Step the physics simulation
-        this.world.step(deltaTime);
+        // Check for valid deltaTime
+        if (isNaN(deltaTime) || deltaTime <= 0) {
+            console.warn("Invalid deltaTime in physics update:", deltaTime);
+            deltaTime = 1/60; // Use default time step
+        }
         
-        // Update body meshes based on physics
-        for (const body of this.bodies) {
-            if (body.userData && body.userData.mesh) {
-                body.userData.mesh.position.copy(cannonToThreeVector(body.position));
-                body.userData.mesh.quaternion.copy(new THREE.Quaternion(
-                    body.quaternion.x,
-                    body.quaternion.y,
-                    body.quaternion.z,
-                    body.quaternion.w
-                ));
+        try {
+            // Step the physics simulation
+            this.world.step(deltaTime);
+            
+            // Update body meshes based on physics
+            for (const body of this.bodies) {
+                if (body.userData && body.userData.mesh) {
+                    body.userData.mesh.position.copy(cannonToThreeVector(body.position));
+                    body.userData.mesh.quaternion.copy(new THREE.Quaternion(
+                        body.quaternion.x,
+                        body.quaternion.y,
+                        body.quaternion.z,
+                        body.quaternion.w
+                    ));
+                }
             }
+            
+            // Debug: Check for bodies that have fallen too far
+            this.bodies.forEach(body => {
+                if (body.position.y < -50) {
+                    console.warn("Body has fallen far below ground, position:", body.position);
+                }
+            });
+        } catch (error) {
+            console.error("Physics update error:", error);
         }
     }
     
     addBody(body, mesh) {
-        this.world.addBody(body);
-        this.bodies.push(body);
-        
-        if (mesh) {
-            body.userData = { mesh };
+        try {
+            this.world.addBody(body);
+            this.bodies.push(body);
+            
+            if (mesh) {
+                body.userData = { mesh };
+            }
+            
+            console.log("Body added to physics world, position:", body.position);
+            return body;
+        } catch (error) {
+            console.error("Error adding body to physics world:", error);
+            return body; // Return body anyway to prevent further errors
         }
-        
-        return body;
     }
     
     removeBody(body) {

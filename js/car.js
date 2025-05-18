@@ -35,6 +35,9 @@ class Car {
         this.speed = 0;
         this.steering = 0;
         
+        // Immediately add a visible debug car body (before physics)
+        this.addDebugCarBody();
+        
         // Initialize the car
         this.init();
         
@@ -43,6 +46,38 @@ class Car {
         if (this.wheelBodies.length > 0) {
             console.log("After init - First wheel position:", this.wheelBodies[0].position);
         }
+    }
+    
+    // Add a simple but very visible car body for debugging
+    addDebugCarBody() {
+        // Create a brightly colored car body for debugging
+        const debugBody = new THREE.Group();
+        
+        // Main body - bright color that's easy to see
+        const bodyGeom = new THREE.BoxGeometry(this.length, this.height, this.width);
+        const bodyMat = new THREE.MeshBasicMaterial({ color: 0xff00ff }); // Bright magenta
+        const bodyMesh = new THREE.Mesh(bodyGeom, bodyMat);
+        debugBody.add(bodyMesh);
+        
+        // Add wireframe for better visibility
+        const wireframe = new THREE.LineSegments(
+            new THREE.EdgesGeometry(bodyGeom),
+            new THREE.LineBasicMaterial({ color: 0xffffff, linewidth: 2 })
+        );
+        debugBody.add(wireframe);
+        
+        // Position at the initial position
+        debugBody.position.set(this.position.x, this.position.y, this.position.z);
+        
+        // Add debug axes to show orientation
+        const axesHelper = new THREE.AxesHelper(3);
+        debugBody.add(axesHelper);
+        
+        // Add to scene
+        this.scene.add(debugBody);
+        this.debugBody = debugBody;
+        
+        console.log("Debug car body added at position:", debugBody.position);
     }
     
     init() {
@@ -449,6 +484,12 @@ class Car {
         if (this.carBody) {
             this.carBody.position.copy(this.chassisMesh.position);
             this.carBody.quaternion.copy(this.chassisMesh.quaternion);
+        }
+        
+        // Update debug body if it exists
+        if (this.debugBody) {
+            this.debugBody.position.copy(this.chassisMesh.position);
+            this.debugBody.quaternion.copy(this.chassisMesh.quaternion);
         }
         
         // Check if chassis has fallen too far - reset if needed
